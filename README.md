@@ -16,5 +16,5 @@ Examples of how to set up basic interrupt routines including triggers based on b
                                  PA4 │10      11│ PA5
                                      ╰──────────╯
 
-```
+
 ### See main.c for additional details
