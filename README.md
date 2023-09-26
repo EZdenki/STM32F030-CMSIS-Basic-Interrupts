@@ -1,5 +1,4 @@
 # STM32F030-CMSIS-Basic-Interrupts
-### Minimalist Blinky for for STM32F030 Using Only CMSIS.
 Examples of how to set up basic interrupt routines including triggers based on button
 
                                                             ST-Link V2 
