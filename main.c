@@ -8,12 +8,13 @@
 //  Released under the MIT License
 //  Copyright (c) 2023
 //  Mike Shegedin, EZdenki.com
+//  Version 1.1   30 Aug 2023    Changed to new button/LED layout
 //  Version 1.0   26 Aug 2023    Started
 //  ------------------------------------------------------------------------------------------
 //  Target Microcontroller and Devices:
 //    * STM32F030Fxxx
-//    * Status LED and current limiting resistor on pin 2-PF0
-//    * Tactile buttons on pin 6 (PA0) and pin 7 (PA1)
+//    * Tactile buttons on PA0, PA1, PA2 (pins 6, 7, 8)
+//    * LEDs and current limiting resistors on PA3, PA4, PA5 (pins 9, 10, 11)
 //    
 //  ------------------------------------------------------------------------------------------
 //  Hardware Setup:
@@ -21,15 +22,15 @@
 //                                        STM32F030F4xx     
 //                                         ╭────╮╭────╮
 //                                   BOOT0 │1       20│ SWCLK -- [SWCLK│ST-Link V2]
-//    GND -- [1K] -- [-Status LED+] -- PF0 │2       19│ SWCLK -- [SWDIO│          ]
+//                                     PF0 │2       19│ SWCLK -- [SWDIO│          ]
 //                                     PF1 │3       18│ PA10
 //                                    NRST │4       17│ PA9
 //                                    VDDA │5 ----- 16│ VCC -- VCC
 //                GND -- [Button 1] -- PA0 │6       15│ GND -- GND
 //                GND -- [Button 2] -- PA1 │7       14│ PB1
-//                                     PA2 │8       13│ PA7
-//                                     PA3 │9       12│ PA6
-//                                     PA4 │10      11│ PA5
+//                GND -- [Button 3] -- PA2 │8       13│ PA7
+//           GND -- [LED 3] -- [1K] -- PA3 │9       12│ PA6
+//           GND -- [LED 2] -- [1K] -- PA4 │10      11│ PA5 -- [1K] -- [LED 3] -- GND
 //                                         ╰──────────╯
 //
 //  ==========================================================================================
@@ -42,27 +43,30 @@
 //  interrupts may be set up simultaneously.
 //
 //  __BUTTON_INTERRUPT:
-//    Interrupt generated on the rising edge of PA0 and PA1. Pressing and releasing the button
-//    on PA0 will cause EXTI0_1_IRQHandler to be called and will turn ON the LED attached to
-//    PF0. Likewise, pressing and releasing the button on PA1 will cause EXTI0_1_IRQHandler
-//    to be called and will turn OFF the LED.
-//    Note that EXTI0 and EXTI1 both result in a call to the same interrupt handler. The code
-//    inside the handler must determine which line actually caused the interrupt by checking
-//    the EXTI->PR register for the PR0 bit (for PA0) or PR1 bit (for PA1).
+//    Interrupt generated on the rising edge of PA0, PA1, and PA2. Pressing and releasing a
+//    button will result in a rising edge and trigger one of the following:
+//      PA0: Will call EXTI0_1_IRQHandler while setting the PR0; Turn ON PA3 LED.
+//      PA1: Will call EXTI0_1_IRQHandler while setting the PR1; Turn OFF PA3 LED.
+//      PA2: Will call EXTI2_3_IRQHandler while setting the PR2: Toggle PA3 LED.
+//    Note that EXTI0 and EXTI1 both result in a call to EXTI0_1_IRQHandler. The code inside
+//    the handler must determine which line actually caused the interrupt by checking the
+//    EXTI->PR register for the PR0 bit (for PA0) or PR1 bit (for PA1). Likewise for EXTI2
+//    and EXTI3 calling EXTI2_3_IRQHandler.
 //
 //  __TIMER_INTERRUPT
-//    Interrupt generated each time that TIM14 overflows.
+//    TIM14 is set up to overflow at a certain perdiod. Each time the timer overflows, an
+//    interrupt is generated which calls TIM14_IRQHandler. This handler toggles the PA4 LED.
 //
 //  __SYSTICK_INTERRUPT
-//    Interrupt generated each time that x clock cycles have occurred, where x is a 24-bit
-//    number initialized in the SysTick_Config( x ) procedure. On an 8 MHz clock, the
-//    slowest time between calls to the interrupt handler is approx. 2 seconds when using a
-//    value of (uint32_t)16E6 for x.
+//    Once the SysTick interrupt is initialized, an interrupt is generated each time that x
+//    clock cycles have occurred, where x is a 24-bit number initialized in the
+//    SysTick_Config( x ) procedure. On an 8 MHz clock, the slowest time between calls to the
+//    interrupt handler is approx. 2 seconds when using a value of (uint32_t)16E6 for x.
 //  ==========================================================================================
 
  #define __BUTTON_INTERRUPT
-// #define __TIMER_INTERRUPT
-// #define __SYSTICK_INTERRUPT
+ #define __TIMER_INTERRUPT
+ #define __SYSTICK_INTERRUPT
 
 
 #ifdef __BUTTON_INTERRUPT
@@ -70,25 +74,44 @@
 //  EXTI0_1_IRQHandler
 //  ------------------------------------------------------------------------------------------
 // void EXTI0_1_IRQHandler( void )
-// This is the interrupt handler for external interrupt lines 0 and 1, so it is called when
-// either of these lines generate an interrupt. You likely want to use the Pending Register
-// to confirm which line generated the interrupt and act accordingly. Be sure to clear the
-// interrupt by setting the bit in the Pending Register to effectively clear it.
+// This is the interrupt handler for external interrupt lines 0 (PA0) and 1 (PA1), so it is
+// called when either of these lines generate an interrupt. You likely want to use the Pending
+// Register to confirm which line generated the interrupt and act accordingly. Be sure to
+// clear the interrupt by setting the bit in the Pending Register to effectively clear it.
 
 void
 EXTI0_1_IRQHandler( void )
 {
-  if( EXTI->PR & EXTI_PR_PR0 )      // If detected rising edge on PA0
+  if( EXTI->PR & EXTI_PR_PR0 )      // If detected rising edge on PA0:
   {
     EXTI->PR |= EXTI_PR_PR0;        // Clear the interrupt by *setting* the Pending Reg. bit
-    GPIOF->ODR |= GPIO_ODR_0;       // Turn ON LED on PF0
+    GPIOA->ODR |= GPIO_ODR_3;       // Turn ON PA3 LED
   }
   else
-    if( EXTI->PR & EXTI_PR_PR1 )    // If rising edge detected on PA1,
+    if( EXTI->PR & EXTI_PR_PR1 )    // If rising edge detected on PA1:
     {
       EXTI->PR |= EXTI_PR_PR1;      // Clear the interrupt by *setting* the Pending Reg. bit
-      GPIOF->ODR &= ~GPIO_ODR_0;    // Turn OFF LED on PF0
+      GPIOA->ODR &= ~GPIO_ODR_3;    // Turn OFF PA3 LED
     }
+}
+
+
+//  ------------------------------------------------------------------------------------------
+//  EXTI2_3_IRQHandler
+//  ------------------------------------------------------------------------------------------
+// void EXTI2_3_IRQHandler( void )
+// This is the interrupt handler for external interrupt lines 2 (PA2) and 3 (PA3), so it is
+// called when the rising edge on PA2 generates an interrupt. External interrupt line 3 on
+// PA3 is not set up. Since only one of the two interrupt lines are used, it is not strictly
+// required to check betwen PA2 and PA3, however, PA2 must be cleared for the next event.
+void
+EXTI2_3_IRQHandler( void )
+{
+//  if( EXTI->PR & EXTI_PR_PR2 )    // If detected rising edge on PA2: (Not needed since
+  {                                 // line 3 / PA3 is not used here.)  
+    EXTI->PR |= EXTI_PR_PR2;        // Clear the interrupt by *setting* the Pending Reg. bit
+    GPIOA->ODR ^= GPIO_ODR_3;       // Toggle PA3 LED
+  }
 }
 #endif // __BUTTON_INTERRUPT
 
@@ -107,7 +130,7 @@ EXTI0_1_IRQHandler( void )
 void
 TIM14_IRQHandler( void )
 {
-  GPIOF->ODR ^= GPIO_ODR_0;
+  GPIOA->ODR ^= GPIO_ODR_4;
   TIM14->SR &= ~TIM_SR_UIF;
 }
 #endif // __TIMER_INTERRUPT
@@ -126,7 +149,7 @@ TIM14_IRQHandler( void )
 void
 SysTick_Handler( void )
 {
-  GPIOF->ODR ^= GPIO_ODR_0;
+  GPIOA->ODR ^= GPIO_ODR_5;
 }
 #endif // __SYSTICK_INTERRUPT
 
@@ -144,14 +167,18 @@ main( void )
 //  Set up GPIO pins as inputs and outputs as required
 //  ------------------------------------------------------------------------------------------
 
-  // Set up GPIO PA0 and PA1 as inputs with pullups
+  // Set up GPIO PA0, PA1, and PA2 as inputs with pullups
   RCC->AHBENR  |= RCC_AHBENR_GPIOAEN;                 // Enable GPIO Port A
-  GPIOA->PUPDR |= (0b01 << GPIO_PUPDR_PUPDR0_Pos) |   // Set pullups on PA0 and PA1
-                  (0b01 << GPIO_PUPDR_PUPDR1_Pos);
+  GPIOA->PUPDR |= (0b01 << GPIO_PUPDR_PUPDR0_Pos) |   // Set pullups on PA0, PA1, PA2
+                  (0b01 << GPIO_PUPDR_PUPDR1_Pos) |
+                  (0b01 << GPIO_PUPDR_PUPDR2_Pos);
   
-  // Set up GPIO PF0 (pin 2) for output for LED
-  RCC->AHBENR  |= RCC_AHBENR_GPIOFEN;                 // Enable GPIOF
-  GPIOF->MODER |= ( 0b01 << GPIO_MODER_MODER0_Pos );  // Set PF0 as output
+  // Set up GPIO PA3, PA4, and PA5 as outputs for LED
+  //  RCC->AHBENR  |= RCC_AHBENR_GPIOAEN;             // Enabled above so not needed here
+  GPIOA->MODER |= ( 0b01 << GPIO_MODER_MODER3_Pos |   // Set PA3, PA4, PA5 as outputs
+                    0b01 << GPIO_MODER_MODER4_Pos |
+                    0b01 << GPIO_MODER_MODER5_Pos );
+
 
 #ifdef __BUTTON_INTERRUPT
 //  ------------------------------------------------------------------------------------------
@@ -167,10 +194,16 @@ main( void )
 //    acknowledged.
 //  4 Set the priority of this interrupt
 
-  EXTI->IMR  |= EXTI_IMR_MR0 | EXTI_IMR_MR1;    // Unmask EXTI interrupts on lines 0 and 1
-  EXTI->RTSR |= EXTI_RTSR_TR0 | EXTI_RTSR_TR1;  // Trigger on rising edge of lines 0 and 1
-  NVIC_EnableIRQ( EXTI0_1_IRQn );               // Enable this interrupt
-  NVIC_SetPriority( EXTI0_1_IRQn, 0 );          // Set the desired priority (0 = highest)
+  EXTI->IMR  |= EXTI_IMR_MR0 |    // Unmask EXTI interrupts on lines 0, 1, and 2
+                EXTI_IMR_MR1 |
+                EXTI_IMR_MR2;
+  EXTI->RTSR |= EXTI_RTSR_TR0 |   // Trigger on rising edge of lines 0, 1, and 2
+                EXTI_RTSR_TR1 |
+                EXTI_RTSR_TR2;
+  NVIC_EnableIRQ( EXTI0_1_IRQn );       // Enable this interrupt for lines 0 and 1
+  NVIC_SetPriority( EXTI0_1_IRQn, 3 );  // Set the desired priority (0 = highest)
+  NVIC_EnableIRQ( EXTI2_3_IRQn );       // Enable this interrupt for lines 2 and 3
+  NVIC_SetPriority( EXTI2_3_IRQn, 3 );  // Set the desired priority (0 = highest)
 #endif // __BUTTON_INTERRUPT
 
 
@@ -195,7 +228,7 @@ main( void )
   TIM14->DIER  |= TIM_DIER_UIE;         // Have TIM14 generate interrupt when it overflows
 
   NVIC_EnableIRQ( TIM14_IRQn );         // Enable TIM14_IRQn
-  NVIC_SetPriority( TIM14_IRQn, 3);     // Set priority for TIM14_IRQn
+  NVIC_SetPriority( TIM14_IRQn, 1);     // Set priority for TIM14_IRQn
 #endif // __TIMER_INTERRUPT
 
 
@@ -215,7 +248,7 @@ main( void )
 #endif // __SYSTICK_INTERRUPT
 
 
-  while( 1 ) ;                          // Do nothing!
+  while( 1 ) ;                            // Do nothing!
 
 
 } // End of main()
