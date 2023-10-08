@@ -8,6 +8,7 @@
 //  Released under the MIT License
 //  Copyright (c) 2023
 //  Mike Shegedin, EZdenki.com
+//  Version 1.2    9 Oct 2023    Cleaned button-push related code
 //  Version 1.1   30 Aug 2023    Changed to new button/LED layout
 //  Version 1.0   26 Aug 2023    Started
 //  ------------------------------------------------------------------------------------------
@@ -29,7 +30,7 @@
 //                GND -- [Button 1] -- PA0 │6       15│ GND -- GND
 //                GND -- [Button 2] -- PA1 │7       14│ PB1
 //                GND -- [Button 3] -- PA2 │8       13│ PA7
-//           GND -- [LED 3] -- [1K] -- PA3 │9       12│ PA6
+//           GND -- [LED 1] -- [1K] -- PA3 │9       12│ PA6
 //           GND -- [LED 2] -- [1K] -- PA4 │10      11│ PA5 -- [1K] -- [LED 3] -- GND
 //                                         ╰──────────╯
 //
@@ -82,16 +83,17 @@
 void
 EXTI0_1_IRQHandler( void )
 {
+  for(uint32_t x=0; x<33000; x++ ); // 50 ms debounce delay
   if( EXTI->PR & EXTI_PR_PR0 )      // If detected rising edge on PA0:
   {
-    EXTI->PR |= EXTI_PR_PR0;        // Clear the interrupt by *setting* the Pending Reg. bit
     GPIOA->ODR |= GPIO_ODR_3;       // Turn ON PA3 LED
+    EXTI->PR |= EXTI_PR_PR0;        // Clear the interrupt by *setting* the Pending Reg. bit
   }
   else
     if( EXTI->PR & EXTI_PR_PR1 )    // If rising edge detected on PA1:
     {
-      EXTI->PR |= EXTI_PR_PR1;      // Clear the interrupt by *setting* the Pending Reg. bit
       GPIOA->ODR &= ~GPIO_ODR_3;    // Turn OFF PA3 LED
+      EXTI->PR |= EXTI_PR_PR1;      // Clear the interrupt by *setting* the Pending Reg. bit
     }
 }
 
@@ -107,11 +109,12 @@ EXTI0_1_IRQHandler( void )
 void
 EXTI2_3_IRQHandler( void )
 {
-//  if( EXTI->PR & EXTI_PR_PR2 )    // If detected rising edge on PA2: (Not needed since
-  {                                 // line 3 / PA3 is not used here.)  
-    EXTI->PR |= EXTI_PR_PR2;        // Clear the interrupt by *setting* the Pending Reg. bit
-    GPIOA->ODR ^= GPIO_ODR_3;       // Toggle PA3 LED
-  }
+  for(uint32_t x=0; x<33000; x++ ) ;  // 50 ms debounce delay
+//  if( EXTI->PR & EXTI_PR_PR2 )      // If detected rising edge on PA2: (Not needed since
+//  {                                 // line 3 / PA3 is not used here.)  
+  GPIOA->ODR ^= GPIO_ODR_3;           // Toggle PA3 LED
+  EXTI->PR |= EXTI_PR_PR2;            // Clear the interrupt by *setting* the Pending Reg. bit
+//  }
 }
 #endif // __BUTTON_INTERRUPT
 
